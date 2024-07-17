@@ -15,11 +15,8 @@ def count_calls(method: Callable) -> Callable:
     """
     @wraps(method)
     def wrapper(self, *args, **kwargs):
-        # Use the method's qualified name as the key
         key = method.__qualname__
-        # Increment the counter
         self._redis.incr(key)
-        # Call the original method
         return method(self, *args, **kwargs)
     return wrapper
 
@@ -30,22 +27,36 @@ def call_history(method: Callable) -> Callable:
     """
     @wraps(method)
     def wrapper(self, *args, **kwargs):
-        # Create input and output list keys
         input_key = f"{method.__qualname__}:inputs"
         output_key = f"{method.__qualname__}:outputs"
 
-        # Store input arguments
         self._redis.rpush(input_key, str(args))
 
-        # Execute the wrapped function
         output = method(self, *args, **kwargs)
 
-        # Store output
         self._redis.rpush(output_key, str(output))
 
         return output
 
     return wrapper
+
+
+def replay(method: Callable):
+    """
+    Display the history of calls of a particular function.
+    """
+    redis_instance = redis.Redis()
+    method_name = method.__qualname__
+    inputs = redis_instance.lrange(f"{method_name}:inputs", 0, -1)
+    outputs = redis_instance.lrange(f"{method_name}:outputs", 0, -1)
+    calls_count = redis_instance.get(method_name)
+
+    print(f"{method_name} was called {calls_count.decode('utf-8')} times:")
+
+    for input_args, output in zip(inputs, outputs):
+        input_str = input_args.decode('utf-8')
+        output_str = output.decode('utf-8')
+        print(f"{method_name}{input_str} -> {output_str}")
 
 
 class Cache:
